@@ -225,8 +225,6 @@ bool isMessage(std::string buf)
 	return (buf.substr(0,4)=="CNTL" || buf.substr(0,4)=="DATA");
 }
 
-//DATA A D 10001 10002 <payload>
-
 std::string constructHeader(std::string type, Router *src, char dst, int dst_port)
 {
 	char fromport[6], dstport[6], header[17];
@@ -344,8 +342,6 @@ void sendMsg(Router* router, int dst_port, std::string msg)
 		fprintf(stderr,"ERROR: 'sendto' failed\n");
 		return;
 	}
-	
-	// ACK
 }
 
 void runDVAlgorithm(Router *router, char src, std::string dv)

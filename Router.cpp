@@ -33,8 +33,11 @@ std::string constructHeader(std::string, char, char, int, int);
 std::string constructHeader(std::string, Router*, char, int);
 void initRouter(Router*);
 void initNeighbors(Router*);
+void RequestDVFromNeighbors(Router*);
 void send_cntl(Router*, char, int);
 void send_data(Router*, char, int, std::string);
+void send_rqst(Router*, char, int);
+void SendDVToNeighbors(Router *);
 void sendMsg(Router*, int, std::string);
 void runDVAlgorithm(Router*, char, std::string);
 void runDVAlgorithm(Router*, char, std::string, bool);
@@ -118,8 +121,7 @@ int main(int argc, char** argv)
 			break;
 		}
 
-		// **TEST** UPDATE: change distance between node1 and node2
-		/* TODO: figure out how to update link costs in network
+		// UPDATE: change distance between node1 and node2
 		else if (std::string(buf).find("UPDATE") == 0)
 		{
 			int distance;
@@ -129,10 +131,10 @@ int main(int argc, char** argv)
 			if (node1==router.name && router.getPredecessorFor(node2)==router.name)
 			{
 				router.updateDistanceTo(node2, distance);
-				runDVAlgorithm(&router, node2, constructDV(&router), true);
+				SendDVToNeighbors(&router);
+				RequestDVFromNeighbors(&router);
 			}
 		}
-		*/
 
 		// PRINTTABLE message: requests DVs from other nodes in network
 		else if (strcmp(buf, "PRINTTABLE\n") == 0)
@@ -148,6 +150,7 @@ int main(int argc, char** argv)
 			std::string msg = buf;
 			std::string dv = msg.substr(16,std::string::npos);
 			bool cntl = (msg.substr(0,4)=="CNTL");
+			bool rqst = (msg.substr(0,4)=="RQST");
 			char src = msg[4];
 			char dst = msg[5];
 			int inport = atoi(msg.substr(6,5).c_str());
@@ -159,6 +162,11 @@ int main(int argc, char** argv)
 				if (cntl)
 				{
 					runDVAlgorithm(&router, src, msg.substr(16,std::string::npos));
+				}
+				else if (rqst)
+				{
+					send_cntl(&router, i2c(inport-10000), inport);
+					printf("\tRespond to request from %d\n", inport);
 				}
 				else
 				{
@@ -222,7 +230,8 @@ bool PortIsValid(char key, int port)
 
 bool isMessage(std::string buf)
 {
-	return (buf.substr(0,4)=="CNTL" || buf.substr(0,4)=="DATA");
+	return (buf.substr(0,4)=="CNTL" || buf.substr(0,4)=="DATA" ||
+			buf.substr(0,4)=="RQST");
 }
 
 std::string constructHeader(std::string type, Router *src, char dst, int dst_port)
@@ -304,6 +313,16 @@ void initNeighbors(Router* router)
 	}
 }
 
+void RequestDVFromNeighbors(Router *router)
+{
+	for (std::map<char, link_info_t>::iterator i = router->getTableBegin();
+		 i != router->getTableEnd(); i++)
+	{
+		if (i->second.predecessor == router->name)
+			send_rqst(router, i->first, i->second.next_hop);
+	}
+}
+
 void send_cntl(Router *src, char dst, int dst_port)
 {
 	// Construct Header
@@ -314,6 +333,25 @@ void send_cntl(Router *src, char dst, int dst_port)
 	
 	// Send message
 	sendMsg(src, dst_port, header+payload);
+}
+
+void send_rqst(Router *src, char dst, int dst_port)
+{
+	// Construct Header
+	std::string header = constructHeader("RQST", src, dst, dst_port);
+	
+	// Send message
+	sendMsg(src, dst_port, header);
+}
+
+void SendDVToNeighbors(Router *router)
+{
+	for (std::map<char, link_info_t>::iterator i = router->getTableBegin();
+		 i != router->getTableEnd(); i++)
+	{
+		if (i->second.predecessor == router->name)
+			send_cntl(router, i->first, i->second.next_hop);
+	}
 }
 
 void sendMsg(Router* router, int dst_port, std::string msg)
@@ -373,7 +411,7 @@ void runDVAlgorithm(Router *router, char src, std::string dv, bool dvChanged)
 		old_dist = router->getDistanceTo(name[idx]);
 		new_dist = router->getDistanceTo(src)+distanceFromSrcTo[name[idx]];
 		
-		if (old_dist > new_dist)
+		if (new_dist > 0 && old_dist > new_dist)
 		{
 			router->setDistanceTo(name[idx], src, new_dist, router->getNextHopFrom(src));
 			dvChanged = true;
@@ -389,13 +427,7 @@ void runDVAlgorithm(Router *router, char src, std::string dv, bool dvChanged)
 	// if dv changed at all
 	if (dvChanged)
 	{
-		for (std::map<char, link_info_t>::iterator i = router->getTableBegin();
-			 i != router->getTableEnd(); i++)
-		{
-			if (i->second.predecessor == router->name)
-				send_cntl(router, i->first, i->second.next_hop);
-		}
-		
+		SendDVToNeighbors(router);
 		router->printTable();
 	}
 }

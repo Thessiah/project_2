@@ -154,8 +154,8 @@ class Router
 		{
 			n = i2c(i);
 			if (fwd_table.find(n) != fwd_table.end())
-				printf("\t  %c  %d   %d\n", n, fwd_table.at(n).cost,
-					   fwd_table.at(n).next_hop);
+				printf("\t  %c  %d     %d\n", n, fwd_table.at(n).next_hop,
+					   fwd_table.at(n).cost);
 		}
 		printf("\n");
 	}
@@ -187,6 +187,15 @@ class Router
 		}
 		else
 		{
+			int nh = 10000+c2i(dst);
+			for (std::map<char, link_info_t>::iterator i = this->getTableBegin();
+				 i != this->getTableEnd(); i++)
+			{
+				if (i->second.next_hop == nh)
+					i->second.cost = INT_MAX;
+			}
+
+			
 			fwd_table[dst].cost = distance;
 		}
 	}

@@ -12,9 +12,12 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <ctime>
+#include <pthread.h>
 
 #include "Router.h"
 
+#define TIMEOUT 10
 
 /*******************************************************************************
  *  CONSTANT DEFINITIONS
@@ -38,6 +41,8 @@ void send_data(Router*, char, int, std::string);
 void sendMsg(Router*, int, std::string);
 void runDVAlgorithm(Router*, char, std::string);
 void runDVAlgorithm(Router*, char, std::string, bool);
+int thread_exists(struct thread_data data[], int size, int id);
+void *waiting(void *threadarg);
 
 /*******************************************************************************
  *  MAIN
@@ -104,20 +109,52 @@ int main(int argc, char** argv)
 	long recvlen;
 	struct sockaddr_in remaddr;
 	socklen_t addrlen = sizeof(remaddr);
+	//std::map<std::clock_t, int> timers;
+	pthread_t threads[10];
+	struct thread_data td[10];
+	int rc;
+	int num_threads = 0;
 
 	for (;;)
 	{
 		printf("Router Port %d listening: \n", PORT_NUMBER);
 		recvlen = recvfrom(router.socket, buf, BUFSIZE, 0, (struct sockaddr*)&remaddr, &addrlen);
-		
 		// SHUTDOWN message: if 'SHUTDOWN' is received, break out of loop and
 		// terminate router
-		if (strcmp(buf, "SHUTDOWN\n") == 0)
+		//if (start != NULL)
+		//{
+		//	duration += (std::clock() - start) / (double)CLOCKS_PER_SEC;
+		//	printf("waiting for %f seconds", duration);
+		//}
+		//printf("%s", buf);
+
+		std::string msg = buf;
+		if (msg.substr(0, 7) == "TIMEOUT")
+		{
+			int port = atoi(msg.substr(7, 5).c_str());
+			num_threads--;
+			printf("Timeout waiting for ACK from port %d\n", port);
+		}
+		else if (msg.substr(0, 3) == "ACK")
+		{
+			int port = atoi(msg.substr(3, 5).c_str()); 
+			int ack = thread_exists(td, num_threads, port);
+			if (ack != num_threads)
+			{
+				td[ack].ack_recieved = true;
+				num_threads--;
+			}
+			//if (timers.find(port) != timers.end())
+			//{
+			//	timers.erase(port);
+			//	printf("ACK recieved from %d!\n", port);
+			//}
+		}
+		else if (strcmp(buf, "SHUTDOWN\n") == 0)
 		{
 			printf("Shutting down router on port %d...\n", PORT_NUMBER);
 			break;
 		}
-
 		// **TEST** UPDATE: change distance between node1 and node2
 		/* TODO: figure out how to update link costs in network
 		else if (std::string(buf).find("UPDATE") == 0)
@@ -144,8 +181,8 @@ int main(int argc, char** argv)
 		else if (isMessage(buf))
 		{
 			//printf("Received Message: \n\t%s\n", buf);
-			
-			std::string msg = buf;
+
+			//std::string msg = buf;
 			std::string dv = msg.substr(16,std::string::npos);
 			bool cntl = (msg.substr(0,4)=="CNTL");
 			char src = msg[4];
@@ -153,6 +190,11 @@ int main(int argc, char** argv)
 			int inport = atoi(msg.substr(6,5).c_str());
 			int dstport = atoi(msg.substr(11,5).c_str());
 			
+			char ack[9];
+			sprintf(ack, "ACK%d", dstport);
+			sendMsg(&router, inport, ack);
+			printf("Sending ACK from %d to %d\n", dstport, inport);
+
 			if (dst == router.name)
 			{
 				// if this is destination, run DV if "CNTL", print message if "DATA"
@@ -171,13 +213,29 @@ int main(int argc, char** argv)
 			// if destination is not this, forward msg
 			else
 			{
-				std::cout << getTime() << std::endl;
-				printf("\tSource: %c\n\tDestination: %c\n\tArrival Port: %d\n\t"
-					   "Destination Port: %d\n", src, dst, inport, dstport);
-				std::string header = constructHeader(msg.substr(0,4), src, dst, dstport,
-													 router.getNextHopFrom(dst));
-				sendMsg(&router, router.getNextHopFrom(dst),
-						header+msg.substr(16,std::string::npos));
+				int next = router.getNextHopFrom(dst);
+				if (thread_exists(td, num_threads, next) == num_threads)//timers.find(router.getNextHopFrom(dst)) == timers.end())
+				{
+					std::cout << getTime() << std::endl;
+					printf("\tSource: %c\n\tDestination: %c\n\tArrival Port: %d\n\t"
+						"Destination Port: %d\n", src, dst, inport, dstport);
+					std::string header = constructHeader(msg.substr(0, 4), src, dst, dstport,
+						router.getNextHopFrom(dst));
+					sendMsg(&router, router.getNextHopFrom(dst),
+						header + msg.substr(16, std::string::npos));
+
+					td[num_threads].thread_id = next;
+					td[num_threads].origin = dstport;
+					td[num_threads].router = &router;
+					td[num_threads].time = std::clock();
+					td[num_threads].ack_recieved = false;
+					rc = pthread_create(&threads[num_threads], NULL, waiting, (void *)&td[num_threads]);
+					num_threads++;
+				}
+				else
+				{
+					printf("Still waiting on ACK from port %d. num_threads = %d\n", router.getNextHopFrom(dst), num_threads);
+				}
 			}
 		}
 		else
@@ -400,3 +458,41 @@ void runDVAlgorithm(Router *router, char src, std::string dv, bool dvChanged)
 	}
 }
 
+int thread_exists(struct thread_data data[], int size, int id)
+{
+	int i;
+	for (i = 0; i < size; i++)
+	{
+		if (data[i].thread_id == id)
+		{
+			break;
+		}
+	}
+	return i;
+}
+
+void *waiting(void *threadarg)
+{
+	double duration = 0;
+	struct thread_data *data;
+	data = (struct thread_data *) threadarg;
+
+	for (;;)
+	{
+		duration = (std::clock() - data->time) / (double)CLOCKS_PER_SEC;
+		//printf("%f", duration);
+		if (duration > TIMEOUT)
+		{
+			char timeout[13];
+			sprintf(timeout, "TIMEOUT%d", data->thread_id);
+			sendMsg(data->router, data->origin, timeout);
+			break;
+		}
+		else if (data->ack_recieved)
+		{
+			printf("ACK recieved from port %d. Closing thread.\n", data->thread_id);
+			break;
+		}
+	}
+	pthread_exit(NULL);
+}

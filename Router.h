@@ -86,6 +86,14 @@ struct link_info
 
 typedef struct link_info link_info_t;
 
+struct thread_data
+{
+	int thread_id;
+	int origin;
+	std::clock_t time;
+	bool ack_recieved;
+	struct Router* router;
+};
 
 /*******************************************************************************
  *  ROUTER CLASS DEFINITION

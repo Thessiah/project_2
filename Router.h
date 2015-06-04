@@ -113,6 +113,14 @@ class Router
 		name = c;
 	}
 	
+	bool entryExists(char r)
+	{
+		if (fwd_table.find(r) == fwd_table.end())
+			return false;
+		
+		return true;
+	}
+	
 	char getPredecessorFor(char dst)
 	{
 		return fwd_table[dst].predecessor;
@@ -166,6 +174,25 @@ class Router
 					   fwd_table.at(n).cost);
 		}
 		printf("\n");
+	}
+	
+	bool removeEntryFor(char deadweight)
+	{
+		int deadport = c2i(deadweight);
+		bool ret = false;
+		
+		ret = fwd_table.erase(deadweight);
+		for (std::map<char, link_info_t>::iterator i = fwd_table.begin();
+			 i != fwd_table.end(); i++)
+		{
+			if (i->second.next_hop == deadport)
+			{
+				i->second.cost = INT_MAX;
+				ret = true;
+			}
+		}
+		
+		return ret;
 	}
 	
 	void setDistanceTo(char dst, char pre, int distance, int nh)

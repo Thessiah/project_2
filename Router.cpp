@@ -34,11 +34,13 @@ bool isMessage(std::string);
 std::string constructDV(Router*);
 std::string constructHeader(std::string, char, char, int, int);
 std::string constructHeader(std::string, Router*, char, int);
+void FloodToNeighbors_Rmv(Router *, char);
 void initRouter(Router*);
 void initNeighbors(Router*);
 void RequestDVFromNeighbors(Router*);
 void send_cntl(Router*, char, int);
 void send_data(Router*, char, int, std::string);
+void send_rmvr(Router*, char, int);
 void send_rqst(Router*, char, int);
 void SendDVToNeighbors(Router *);
 void sendMsg(Router*, int, std::string);
@@ -135,8 +137,15 @@ int main(int argc, char** argv)
 		if (msg.substr(0, 7) == "TIMEOUT")
 		{
 			int port = atoi(msg.substr(7, 5).c_str());
+			char dead_router = i2c(port-10000);
 			num_threads--;
 			printf("Timeout waiting for ACK from port %d\n", port);
+			
+			if (router.removeEntryFor(dead_router))
+			{
+				FloodToNeighbors_Rmv(&router, dead_router);
+				SendDVToNeighbors(&router);
+			}
 		}
 		else if (msg.substr(0, 3) == "ACK")
 		{
@@ -189,6 +198,7 @@ int main(int argc, char** argv)
 			std::string dv = msg.substr(16,std::string::npos);
 			bool cntl = (msg.substr(0,4)=="CNTL");
 			bool rqst = (msg.substr(0,4)=="RQST");
+			bool rmvr = (msg.substr(0,4)=="RMVR");
 			char src = msg[4];
 			char dst = msg[5];
 			int inport = atoi(msg.substr(6,5).c_str());
@@ -199,7 +209,17 @@ int main(int argc, char** argv)
 			sendMsg(&router, inport, ack);
 			printf("Sending ACK from %d to %d\n", dstport, inport);
 
-			if (dst == router.name)
+			if (rmvr)
+			{
+				printf("Removing entries with %c\n", dst);
+				if (router.removeEntryFor(dst))
+				{
+					router.printTable();
+					FloodToNeighbors_Rmv(&router, dst);
+					SendDVToNeighbors(&router);
+				}
+			}
+			else if (dst == router.name)
 			{
 				// if this is destination, run DV if "CNTL", print message if "DATA"
 				if (cntl)
@@ -290,7 +310,7 @@ bool PortIsValid(char key, int port)
 bool isMessage(std::string buf)
 {
 	return (buf.substr(0,4)=="CNTL" || buf.substr(0,4)=="DATA" ||
-			buf.substr(0,4)=="RQST");
+			buf.substr(0,4)=="RQST" || buf.substr(0,4)=="RMVR");
 }
 
 std::string constructHeader(std::string type, Router *src, char dst, int dst_port)
@@ -325,6 +345,15 @@ std::string constructDV(Router *r)
 	}
 	
 	return payload;
+}
+
+void FloodToNeighbors_Rmv(Router *router, char deadrouter)
+{
+	for (std::map<char, link_info_t>::iterator i = router->getTableBegin();
+		 i != router->getTableEnd(); i++)
+	{
+		send_rmvr(router, deadrouter, i->second.next_hop);
+	}
 }
 
 void initRouter(Router* router)
@@ -398,6 +427,15 @@ void send_rqst(Router *src, char dst, int dst_port)
 {
 	// Construct Header
 	std::string header = constructHeader("RQST", src, dst, dst_port);
+	
+	// Send message
+	sendMsg(src, dst_port, header);
+}
+
+void send_rmvr(Router *src, char dead, int dst_port)
+{
+	// Construct Header
+	std::string header = constructHeader("RMVR", src, dead, dst_port);
 	
 	// Send message
 	sendMsg(src, dst_port, header);
@@ -481,6 +519,13 @@ void runDVAlgorithm(Router *router, char src, std::string dv, bool dvChanged)
 	if (name.size() < router->getTableSize())
 	{
 		dvChanged = true;
+	}
+	
+	if (!router->entryExists(src))
+	{
+		router->setDistanceTo(src, router->name, distanceFromSrcTo[router->name],
+							  c2i(src)+10000);
+		dvChanged = true;		
 	}
 	
 	// if dv changed at all

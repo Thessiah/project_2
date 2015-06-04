@@ -42,8 +42,8 @@ void send_data(Router*, char, int, std::string);
 void send_rqst(Router*, char, int);
 void SendDVToNeighbors(Router *);
 void sendMsg(Router*, int, std::string);
-void runDVAlgorithm(Router*, char, std::string);
-void runDVAlgorithm(Router*, char, std::string, bool);
+void runDVAlgorithm(Router*, char, std::string, FILE*);
+void runDVAlgorithm(Router*, char, std::string, FILE*, bool);
 int thread_exists(struct thread_data data[], int size, int id);
 void *waiting(void *threadarg);
 
@@ -112,11 +112,15 @@ int main(int argc, char** argv)
 	long recvlen;
 	struct sockaddr_in remaddr;
 	socklen_t addrlen = sizeof(remaddr);
-	//std::map<std::clock_t, int> timers;
 	pthread_t threads[10];
 	struct thread_data td[10];
 	int rc;
 	int num_threads = 0;
+	
+	FILE * fp;
+	char file[20];
+	sprintf(file, "routing-output%c.txt", router.name);
+	fp = fopen(file, "w+");
 
 	for (;;)
 	{
@@ -197,14 +201,12 @@ int main(int argc, char** argv)
 			char ack[9];
 			sprintf(ack, "ACK%d", dstport);
 			sendMsg(&router, inport, ack);
-			printf("Sending ACK from %d to %d\n", dstport, inport);
-
 			if (dst == router.name)
 			{
 				// if this is destination, run DV if "CNTL", print message if "DATA"
 				if (cntl)
 				{
-					runDVAlgorithm(&router, src, msg.substr(16,std::string::npos));
+					runDVAlgorithm(&router, src, msg.substr(16,std::string::npos), fp);
 				}
 				else if (rqst)
 				{
@@ -243,7 +245,7 @@ int main(int argc, char** argv)
 				}
 				else
 				{
-					printf("Still waiting on ACK from port %d. num_threads = %d\n", router.getNextHopFrom(dst), num_threads);
+					printf("Still waiting on ACK from port %d.", router.getNextHopFrom(dst));
 				}
 			}
 		}
@@ -258,7 +260,7 @@ int main(int argc, char** argv)
 
 	// Deallocate socket resources
 	close(router.socket);
-
+	fclose(fp);
 
 	return 0;
 }
@@ -441,12 +443,12 @@ void sendMsg(Router* router, int dst_port, std::string msg)
 	}
 }
 
-void runDVAlgorithm(Router *router, char src, std::string dv)
+void runDVAlgorithm(Router *router, char src, std::string dv, FILE* infile)
 {
-	runDVAlgorithm(router, src, dv, false);
+	runDVAlgorithm(router, src, dv, infile, false);
 }
 
-void runDVAlgorithm(Router *router, char src, std::string dv, bool dvChanged)
+void runDVAlgorithm(Router *router, char src, std::string dv, FILE* infile, bool dvChanged)
 {
 	// Extract values from DV (taken from isDV())
 	char id;
@@ -488,6 +490,7 @@ void runDVAlgorithm(Router *router, char src, std::string dv, bool dvChanged)
 	{
 		SendDVToNeighbors(router);
 		router->printTable();
+		router->writeTable(infile);
 	}
 }
 

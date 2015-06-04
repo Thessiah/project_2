@@ -167,6 +167,22 @@ class Router
 		}
 		printf("\n");
 	}
+
+	void writeTable(FILE *infile)
+	{
+		char n;
+		fprintf(infile, "%s\n\tRouter %c Forwarding Table\n", getTime().c_str(),
+			this->name);
+		for (int i = 0; i<NUM_ROUTERS; i++)
+		{
+			n = i2c(i);
+			if (fwd_table.find(n) != fwd_table.end())
+				fprintf(infile, "\t  %c  %d     %d\n", n, fwd_table.at(n).next_hop,
+				fwd_table.at(n).cost);
+		}
+		fprintf(infile, "\n");
+		fflush(infile);
+	}
 	
 	void setDistanceTo(char dst, char pre, int distance, int nh)
 	{

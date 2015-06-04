@@ -158,13 +158,8 @@ int main(int argc, char** argv)
 			printf("Shutting down router on port %d...\n", PORT_NUMBER);
 			break;
 		}
-<<<<<<< HEAD
-		// **TEST** UPDATE: change distance between node1 and node2
-		/* TODO: figure out how to update link costs in network
-=======
 
 		// UPDATE: change distance between node1 and node2
->>>>>>> origin/master
 		else if (std::string(buf).find("UPDATE") == 0)
 		{
 			int distance;

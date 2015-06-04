@@ -10,11 +10,12 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "Router.h"
+
 
 /*******************************************************************************
  *  CONSTANT DEFINITIONS
  ******************************************************************************/
-#define BUFSIZE		2048
 #define CLIENTPORT	10020
 
 /*******************************************************************************
@@ -44,10 +45,6 @@ int main(int argc, const char * argv[])
 		return 0;
 	}
 	
-	servaddr.sin_family = AF_INET;
-	memcpy((void *)&servaddr.sin_addr, server->h_addr_list[0], server->h_length);
-	servaddr.sin_port = htons(atoi(argv[2]));
-	
 	// Create client socket
 	if ((clientSock = socket(AF_INET,SOCK_DGRAM,0)) < 0)
 	{
@@ -72,7 +69,45 @@ int main(int argc, const char * argv[])
 	printf("Please enter the message: ");
 	bzero(message,BUFSIZE);
 	fgets(message,BUFSIZE,stdin);
+
+	// Band-aid fix for updating routers
+	if (std::string(message).find("UPDATE") == 0)
+	{
+		int distance, port1, port2;
+		char node1, node2, buf1[BUFSIZE], buf2[BUFSIZE];
+		
+		sscanf(message,"UPDATE: %c %c %d\n", &node1, &node2, &distance);
+		port1 = 10000+c2i(node1);
+		port2 = 10000+c2i(node2);
+		
+		struct sockaddr_in servaddr1, servaddr2;
+		servaddr1.sin_family = AF_INET;
+		servaddr2.sin_family = AF_INET;
+		memcpy((void *)&servaddr1.sin_addr, server->h_addr_list[0], server->h_length);
+		memcpy((void *)&servaddr2.sin_addr, server->h_addr_list[0], server->h_length);
+		servaddr1.sin_port = htons(port1);
+		servaddr2.sin_port = htons(port2);
+
+		sprintf(buf1, "UPDATE: %c %c %d\n", node1, node2, distance);
+		sprintf(buf2, "UPDATE: %c %c %d\n", node2, node1, distance);
+		
+		sendto(clientSock, buf1, strlen(buf1), 0,
+			   (struct sockaddr *)&servaddr1, sizeof(servaddr1));
+		printf("First msg sent; ");
+		sendto(clientSock, buf2, strlen(buf2), 0,
+			   (struct sockaddr *)&servaddr2, sizeof(servaddr2));
+		printf("Second msg send\n");
+
+
+		return 0;
+	}
 	
+	// Generate destination address information
+	servaddr.sin_family = AF_INET;
+	memcpy((void *)&servaddr.sin_addr, server->h_addr_list[0], server->h_length);
+	servaddr.sin_port = htons(atoi(argv[2]));
+	
+	// Send message to destination router
 	if (sendto(clientSock,message,strlen(message),0,
 			   (struct sockaddr *)&servaddr,sizeof(servaddr)) < 0)
 	{

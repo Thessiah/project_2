@@ -241,6 +241,15 @@ int main(int argc, char** argv)
 					printf("\tSource: %c\n\tDestination: %c\n\tArrival Port: %d\n\t"
 						   "Destination Port: %d\n\tMessage:\n\t  %s", src, dst,
 						   inport, dstport, msg.substr(16,std::string::npos).c_str());
+					
+					fprintf(fp, "%s: DATA PACKET RECEIVED\n", getTime().c_str());
+					fprintf(fp, "\tSource: %c\n\tDestination: %c\n\tArrival Port: %d\n\t"
+							"Destination Port: %d\n\tMessage:\n\t  %s", src, dst,
+							inport, dstport, msg.substr(16,std::string::npos).c_str());
+					
+					for (int i=0; i<80; i++)
+						fprintf(fp, "-");
+					fprintf(fp, "\n");
 				}
 			}
 			// if destination is not this, forward msg
@@ -252,6 +261,16 @@ int main(int argc, char** argv)
 					std::cout << getTime() << std::endl;
 					printf("\tSource: %c\n\tDestination: %c\n\tArrival Port: %d\n\t"
 						"Destination Port: %d\n", src, dst, inport, dstport);
+					
+					fprintf(fp, "%s: DATA PACKET RECEIVED\n", getTime().c_str());
+					fprintf(fp, "\tSource: %c\n\tDestination: %c\n\tArrival Port: %d\n\t"
+							"Destination Port: %d\n", src, dst, inport, dstport);
+					
+					for (int i=0; i<80; i++)
+						fprintf(fp, "-");
+					fprintf(fp, "\n");
+
+					
 					std::string header = constructHeader(msg.substr(0, 4), src, dst, dstport,
 						router.getNextHopFrom(dst));
 					sendMsg(&router, router.getNextHopFrom(dst),
@@ -496,6 +515,7 @@ void runDVAlgorithm(Router *router, char src, std::string dv, FILE* infile, bool
 	std::map<char,int> distanceFromSrcTo;
 	std::string buf, name="";
 	std::stringstream dv_stream(dv);
+	Router old_router = *router;
 	
 	// Extract DV information
 	while (getline(dv_stream, buf))
@@ -535,9 +555,21 @@ void runDVAlgorithm(Router *router, char src, std::string dv, FILE* infile, bool
 	// if dv changed at all
 	if (dvChanged)
 	{
-		SendDVToNeighbors(router);
 		router->printTable();
+		
+		fprintf(infile, "CHANGES IN FORWARDING TABLE FOR %c\n\n", router->name);
+		fprintf(infile, "Old Forwarding Table\n");
+		old_router.writeTable(infile);
+		fprintf(infile, "\nReceived Distance Vector from %c:\n", src);
+		for (int i=0; i<name.size(); i++)
+			fprintf(infile, "\t  %c    %d\n", name[i], distanceFromSrcTo[name[i]]);
+		fprintf(infile, "\nNew Forwarding Table\n");
 		router->writeTable(infile);
+		for (int i=0; i<80; i++)
+			fprintf(infile, "-");
+		fprintf(infile, "\n");
+		
+		SendDVToNeighbors(router);
 	}
 }
 

@@ -1,0 +1,12 @@
+port_nums=(10000 10001 10002 10003 10004 10005)
+
+random_nums=( $(
+for el in "${port_nums[@]}"
+do
+    echo "$el"
+done | sort -R) )
+
+for num in "${port_nums[@]}"
+do
+    xterm -hold -e ./udprouter $num &
+done

@@ -179,7 +179,7 @@ class Router
 	void writeTable(FILE *infile)
 	{
 		char n;
-		fprintf(infile, "%s\n\tRouter %c Forwarding Table\n", getTime().c_str(),
+		fprintf(infile, "%s  Router %c Forwarding Table\n", getTime().c_str(),
 			this->name);
 		for (int i = 0; i<NUM_ROUTERS; i++)
 		{

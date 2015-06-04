@@ -1,7 +1,9 @@
-Band-aid fixes for router update via client
-- Client will now send updates to both routers involved in link-cost change
-- When client is used to update a link-cost, the port number used when invoking client (i.e. "./client localhost <port number>) means nothing (but still pass one in!)
-- When updating the DV of a router, the router will "poison" all distance that relied on the updated link-cost by increasing the distances to INT_MAX
-- That will cause runDVAlgorithm to correctly identify new, shorter paths that came about as a result of the link-cost update
-- New message type "RQST" requests the DV from the destination router; this is used after an update has occurred to ensure that routers compute new DV's using all available information
-- NOTE: RQST-messages may need to be used in more places, not entirely sure yet
+'start-router': starts six routers indicated by topology in random order
+Note: runs on CS 118 VM; not guaranteed to run anywhere else
+
+
+'update': injects message updating distance between two nodes
+  USAGE: ./update <name_of_node_1> <name_of_node_2> <distance>
+'data': injects data packet containing "This is a test" to target router
+  USAGE: ./data <name_of_node_where_message_starts> <name_of_destination>
+Note: 'update' and 'data' are simple wrappers for 'client'
